@@ -1,19 +1,15 @@
 #include "RadarCalculator.h"
 #include <cmath>
-#include <QString>
 
-// Константы
 static const double C = 3.0e8;
 static const double PI = 3.141592653589793;
 static const double BOLTZMANN = 1.38e-23;
 static const double T0 = 290.0;
 
-// Вспомогательная функция: проверка попадания в диапазон
 static bool inRange(double val, double min, double max) {
     return val >= min && val <= max;
 }
 
-// Принимаемая мощность по уравнению радиолокации
 double RadarCalculator::calculateReceivedPower(double Pt, double Gt, double Gr,
                                                double lambda, double sigma, double R)
 {
@@ -31,54 +27,63 @@ RadarCalculator::TimeAnalysisResult RadarCalculator::performTimeAnalysis(
     res.maxRange = 0.0;
     res.pulsePeriod = 0.0;
 
-    // Проверка диапазонов: rpm
     if (!inRange(rpm, 10.0, 40.0)) {
-        res.message = "Rotation speed out of range [10, 40] rpm";
+        res.message = "Скорость вращения вне диапазона [10, 40] об/мин";
         return res;
     }
     if (!inRange(azimuthPoints, 1024, 16384)) {
-        res.message = "Azimuth points out of range [1024, 16384]";
+        res.message = "Количество точек по азимуту вне диапазона [1024, 16384]";
         return res;
     }
 
-    double tau_us = tau; // предположим, что tau уже в микросекундах, в UI будем переводить
+    double tau_us = tau;
     double tau_sec = tau_us * 1e-6;
-    double rpm_sec = rpm / 60.0; // об/сек
+    double rpm_sec = rpm / 60.0;
 
-    // Период повторения = время на одну азимутальную точку
-    double T = 1.0 / (rpm_sec * azimuthPoints);  // сек
+    double T = 1.0 / (rpm_sec * azimuthPoints);
+    double T_us = T * 1e6;   // период в микросекундах для сообщения
 
-    // Проверка для типа сигнала
     bool tauOk = false, periodOk = false;
-    if (signalType == "Impulse") {
+    if (signalType == "Импульсный") {
         tauOk = inRange(tau_us, 0.05, 1.0);
-        periodOk = inRange(T * 1e6, 340.0, 2000.0);
-    } else { // Quasi-continuous
+        periodOk = inRange(T_us, 340.0, 2000.0);
+        if (!tauOk && !periodOk)
+            res.message = QString("Длительность %1 мкс вне [0.05–1] мкс и период %2 мкс вне [340–2000] мкс")
+                              .arg(tau_us).arg(T_us);
+        else if (!tauOk)
+            res.message = QString("Длительность %1 мкс вне допустимого диапазона [0.05–1] мкс").arg(tau_us);
+        else if (!periodOk)
+            res.message = QString("Период %1 мкс вне допустимого диапазона [340–2000] мкс (вычислен из скорости и точек)").arg(T_us);
+    } else { // Квазинепрерывный
         tauOk = inRange(tau_us, 0.05, 30.0);
-        periodOk = inRange(T * 1e6, 10.0, 200.0);
+        periodOk = inRange(T_us, 10.0, 200.0);
+        if (!tauOk && !periodOk)
+            res.message = QString("Длительность %1 мкс вне [0.05–30] мкс и период %2 мкс вне [10–200] мкс")
+                              .arg(tau_us).arg(T_us);
+        else if (!tauOk)
+            res.message = QString("Длительность %1 мкс вне допустимого диапазона [0.05–30] мкс").arg(tau_us);
+        else if (!periodOk)
+            res.message = QString("Период %1 мкс вне допустимого диапазона [10–200] мкс (вычислен из скорости и точек)").arg(T_us);
     }
     if (!tauOk || !periodOk) {
-        res.message = "Tau or period out of allowed range for selected signal type";
         return res;
     }
 
     if (T <= tau_sec) {
-        res.message = "Pulse period must be greater than pulse width";
+        res.message = "Период повторения должен быть больше длительности импульса";
         return res;
     }
 
-    // Время облучения цели лучом
-    double T_illum = beamwidth / (6.0 * rpm);  // сек
+    double T_illum = beamwidth / (6.0 * rpm);
     if (T_illum < T) {
-        res.message = "Illumination time is less than pulse period";
+        res.message = "Время облучения меньше периода повторения";
         return res;
     }
 
-    // Всё проверено, считаем дальность
     res.feasible = true;
     res.pulsePeriod = T;
     res.maxRange = C * (T - tau_sec) / 2.0;
-    res.message = "Feasible";
+    res.message = "Режим возможен";
     return res;
 }
 
@@ -90,32 +95,29 @@ RadarCalculator::PowerAnalysisResult RadarCalculator::performPowerAnalysis(
     double tau_sec = tau * 1e-6;
     double T_sec = period * 1e-6;
 
-    // Проверка диапазона мощности
     bool powerOk = false;
-    if (signalType == "Impulse") {
+    if (signalType == "Импульсный") {
         powerOk = inRange(Pt, 5000.0, 60000.0);
     } else {
         powerOk = inRange(Pt, 1.0, 200.0);
     }
     if (!powerOk) {
-        res.maxRange = 0.0; // некорректно, можно выбросить
+        res.maxRange = 0.0;
         return res;
     }
 
-    // Пороговая чувствительность (упрощённо: S_min = k*T0*B / G_rx)
     double B = 1.0 / tau_sec;
     double G_rx_lin = pow(10.0, gainRx_dB / 10.0);
     double S_min = (BOLTZMANN * T0 * B) / G_rx_lin;
 
-    // Энергия импульса
     double E = 0.0;
-    if (signalType == "Impulse") {
-        E = Pt * tau_sec;               // пиковая * длительность
+    if (signalType == "Импульсный") {
+        E = Pt * tau_sec;
     } else {
-        E = Pt * T_sec;                 // средняя * период
+        E = Pt * T_sec;
     }
 
-    double sigma = 10.0;  // ЭПР = 10 м²
+    double sigma = 10.0;
     double Gt = G;
     double Gr = G;
 
@@ -131,50 +133,41 @@ RadarCalculator::CombinedAnalysisResult RadarCalculator::performCombinedAnalysis
     double gainRx_dB, const QString &signalType)
 {
     CombinedAnalysisResult res;
-    // 1. Временной анализ
     TimeAnalysisResult timeRes = performTimeAnalysis(rpm, azimuthPoints, tau, beamwidth, signalType);
     double R_time = timeRes.feasible ? timeRes.maxRange : 0.0;
-    double T = timeRes.pulsePeriod; // берём период из временного анализа (или из входного?)
-    // Если используем введённый период, а не вычисленный, то надо аккуратно.
-    // По заданию на входе комбинированного задаются все параметры, включая период.
-    // Используем введённый период для расчёта дальности (временная дальность зависит от периода).
-    // Так что R_time должна вычисляться на основе введённого периода, а не вычисленного T.
-    // Поэтому переопределим R_time по формуле с пользовательским периодом.
     double tau_sec = tau * 1e-6;
     double T_sec = period * 1e-6;
     R_time = (T_sec > tau_sec) ? (C * (T_sec - tau_sec) / 2.0) : 0.0;
     res.timeRange = R_time;
 
-    // 2. Мощностной анализ
     PowerAnalysisResult powRes = performPowerAnalysis(tau, period, Pt, G, lambda, gainRx_dB, signalType);
     res.powerRange = powRes.maxRange;
 
-    // 3. Количество импульсов в пачке
     double T_illum = beamwidth / (6.0 * rpm);
     double N_pulses = T_illum / T_sec;
-    res.pulseCount = static_cast<int>(floor(N_pulses)); // целое количество
+    res.pulseCount = static_cast<int>(floor(N_pulses));
 
-    // 4. Сравнение
     if (R_time < powRes.maxRange) {
         res.isTimeLimited = true;
         res.receivedPower = calculateReceivedPower(Pt, G, G, lambda, 10.0, R_time);
         res.recommendedPt = 0.0;
-        res.conclusion = QString("Time limited. Received power at R_time: %1 W").arg(res.receivedPower);
+        res.conclusion = QString("Ограничение по времени. Принимаемая мощность на дальности временного ограничения: %1 Вт")
+                             .arg(res.receivedPower);
     } else {
         res.isTimeLimited = false;
-        // Рекомендуемая мощность передатчика, чтобы R_power = R_time
         double B = 1.0 / tau_sec;
         double G_rx_lin = pow(10.0, gainRx_dB / 10.0);
         double S_min = (BOLTZMANN * T0 * B) / G_rx_lin;
         double sigma = 10.0;
         double E_new = pow(R_time, 4) * pow(4 * PI, 3) * S_min / (G * G * lambda * lambda * sigma);
-        if (signalType == "Impulse") {
+        if (signalType == "Импульсный") {
             res.recommendedPt = E_new / tau_sec;
         } else {
             res.recommendedPt = E_new / T_sec;
         }
         res.receivedPower = 0.0;
-        res.conclusion = QString("Power limited. Recommended Tx power: %1 W").arg(res.recommendedPt);
+        res.conclusion = QString("Ограничение по мощности. Рекомендуемая мощность передатчика: %1 Вт")
+                             .arg(res.recommendedPt);
     }
     return res;
 }

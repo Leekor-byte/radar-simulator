@@ -17,11 +17,13 @@ public:
 
 private slots:
     void onCalculateClicked();
+    void onModeChanged(int index);
+    void onSignalTypeChanged(int index);
+    void onAntennaTypeChanged(int index);
 
 private:
     Ui::MainWindow *ui;
 
-    // Вспомогательные методы чтения и валидации
     bool readCommonParams(double &freq, double &lambda,
                           double &G, double &gainRx_dB,
                           QString &antennaType, double &beamwidth);
