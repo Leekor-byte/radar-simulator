@@ -195,7 +195,7 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>11</x>
@@ -719,6 +719,42 @@
       </widget>
      </item>
     </layout>
+   </widget>
+   <widget class="QPushButton" name="btnDatabase">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>540</y>
+      <width>161</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>База целей</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btnTargetPower">
+    <property name="geometry">
+     <rect>
+      <x>190</x>
+      <y>540</y>
+      <width>241</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Расчёт мощности по цели</string>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">

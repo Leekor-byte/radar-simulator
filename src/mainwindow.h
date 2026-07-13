@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "database.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -20,9 +21,12 @@ private slots:
     void onModeChanged(int index);
     void onSignalTypeChanged(int index);
     void onAntennaTypeChanged(int index);
+    void onOpenTargetDatabase();
+    void onCalculatePowerForTarget();
 
 private:
     Ui::MainWindow *ui;
+    DatabaseManager *m_db;
 
     bool readCommonParams(double &freq, double &lambda,
                           double &G, double &gainRx_dB,

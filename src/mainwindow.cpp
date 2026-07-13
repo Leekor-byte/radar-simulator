@@ -1,28 +1,51 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "RadarCalculator.h"
+#include "targetdialog.h"
+#include "database.h"
+
 #include <QDoubleValidator>
 #include <QIntValidator>
+#include <QComboBox>
+#include <QPushButton>
+#include <QDialog>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QLabel>
+#include <QMessageBox>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_db(nullptr)
 {
     ui->setupUi(this);
+
+    // Инициализация базы данных
+    m_db = new DatabaseManager(this);
+    if (!m_db->initialize()) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось инициализировать базу данных");
+    }
+
+    // Заполнение комбобоксов
+    ui->modeBox->addItems({"Временной анализ", "Мощностной анализ", "Комбинированный анализ"});
+    ui->signalModeBox->addItems({"Импульсный", "Квазинепрерывный"});
+    ui->antennaBox->addItems({"Щелевая", "Зеркальная"});
 
     // Валидаторы
     ui->leFrequency->setValidator(new QDoubleValidator(9400, 9800, 2, this));
     ui->leAzimuthPoints->setValidator(new QIntValidator(1024, 16384, this));
 
-    // Начальные подсказки (некоторые статичны, остальные динамические)
+    // Начальные подсказки (статические)
     ui->leFrequency->setPlaceholderText("9400 – 9800 МГц");
     ui->leGainAntenna->setPlaceholderText("100 – 500 раз");
     ui->leGainRx->setPlaceholderText("5 – 50 дБ");
-    // leBeamwidth – динамический placeholder
     ui->leRotationSpeed->setPlaceholderText("10 – 40 об/мин");
     ui->leAzimuthPoints->setPlaceholderText("1024 – 16384");
-    // leTau, lePeriod, lePt – динамические
 
+    // Подключение сигналов для режима, типа сигнала и антенны
     connect(ui->btnCalculate, &QPushButton::clicked,
             this, &MainWindow::onCalculateClicked);
     connect(ui->modeBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -32,7 +55,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->antennaBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onAntennaTypeChanged);
 
-    // Установка начального состояния
+    // Подключение новых кнопок (уже существуют в UI)
+    connect(ui->btnDatabase, &QPushButton::clicked,
+            this, &MainWindow::onOpenTargetDatabase);
+    connect(ui->btnTargetPower, &QPushButton::clicked,
+            this, &MainWindow::onCalculatePowerForTarget);
+
+    // Установка начального состояния видимости и подсказок
     onModeChanged(ui->modeBox->currentIndex());
     onSignalTypeChanged(ui->signalModeBox->currentIndex());
     onAntennaTypeChanged(ui->antennaBox->currentIndex());
@@ -191,4 +220,69 @@ void MainWindow::onCalculateClicked()
                      .arg(res.conclusion);
     }
     showResult(result);
+}
+
+// ---------- НОВЫЕ СЛОТЫ ----------
+
+void MainWindow::onOpenTargetDatabase()
+{
+    TargetDialog dlg(m_db, this);
+    dlg.exec();
+}
+
+void MainWindow::onCalculatePowerForTarget()
+{
+    auto targets = m_db->allTargets();
+    if (targets.isEmpty()) {
+        showResult("Нет целей в базе данных");
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Расчёт мощности по цели");
+    QFormLayout form(&dlg);
+
+    QComboBox combo;
+    for (const auto &t : targets) {
+        combo.addItem(QString("%1 (%2, %3 м²)").arg(t.name, t.type).arg(t.rcs), t.id);
+    }
+
+    QLineEdit rangeEdit;
+    rangeEdit.setPlaceholderText("Дальность (м)");
+    form.addRow("Цель", &combo);
+    form.addRow("Дальность", &rangeEdit);
+
+    QPushButton calcBtn("Рассчитать");
+    form.addRow(&calcBtn);
+
+    QLabel resultLabel;
+    resultLabel.setWordWrap(true);
+    form.addRow("Результат", &resultLabel);
+
+    QObject::connect(&calcBtn, &QPushButton::clicked, [&]() {
+        bool ok;
+        double R = rangeEdit.text().toDouble(&ok);
+        if (!ok || R <= 0) {
+            resultLabel.setText("Некорректная дальность");
+            return;
+        }
+        int id = combo.currentData().toInt();
+        double sigma = 0;
+        for (const auto &t : targets) {
+            if (t.id == id) { sigma = t.rcs; break; }
+        }
+
+        double freq = ui->leFrequency->text().toDouble();
+        double G = ui->leGainAntenna->text().toDouble();
+        double Pt = ui->lePt->text().toDouble();
+        if (freq <= 0 || G <= 0 || Pt <= 0) {
+            resultLabel.setText("Не заданы параметры радара (частота, усиление, мощность)");
+            return;
+        }
+        double lambda = 3e8 / (freq * 1e6);
+        double Pr = RadarCalculator::calculateReceivedPower(Pt, G, G, lambda, sigma, R);
+        resultLabel.setText(QString("Принимаемая мощность: %1 Вт").arg(Pr, 0, 'e', 6));
+    });
+
+    dlg.exec();
 }
