@@ -5,6 +5,7 @@
 #include "database.h"
 
 #include <QDoubleValidator>
+#include <utility>   // для std::as_const
 #include <QIntValidator>
 #include <QComboBox>
 #include <QPushButton>
@@ -28,11 +29,6 @@ MainWindow::MainWindow(QWidget *parent)
     if (!m_db->initialize()) {
         QMessageBox::critical(this, "Ошибка", "Не удалось инициализировать базу данных");
     }
-
-    // Заполнение комбобоксов
-    ui->modeBox->addItems({"Временной анализ", "Мощностной анализ", "Комбинированный анализ"});
-    ui->signalModeBox->addItems({"Импульсный", "Квазинепрерывный"});
-    ui->antennaBox->addItems({"Щелевая", "Зеркальная"});
 
     // Валидаторы
     ui->leFrequency->setValidator(new QDoubleValidator(9400, 9800, 2, this));
@@ -243,7 +239,7 @@ void MainWindow::onCalculatePowerForTarget()
     QFormLayout form(&dlg);
 
     QComboBox combo;
-    for (const auto &t : targets) {
+    for (const auto &t : std::as_const(targets)) {
         combo.addItem(QString("%1 (%2, %3 м²)").arg(t.name, t.type).arg(t.rcs), t.id);
     }
 
@@ -268,7 +264,7 @@ void MainWindow::onCalculatePowerForTarget()
         }
         int id = combo.currentData().toInt();
         double sigma = 0;
-        for (const auto &t : targets) {
+        for (const auto &t : std::as_const(targets)) {
             if (t.id == id) { sigma = t.rcs; break; }
         }
 

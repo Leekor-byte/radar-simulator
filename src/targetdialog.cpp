@@ -103,7 +103,6 @@ void TargetDialog::onAddTarget()
             return;
         }
         t.displacement = d;
-        // формула 52 * D^(2/3), D в тыс. тонн
         t.rcs = 52.0 * pow(d, 2.0/3.0);
     } else { // Ориентир
         bool ok;

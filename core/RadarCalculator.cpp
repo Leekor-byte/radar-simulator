@@ -134,10 +134,9 @@ RadarCalculator::CombinedAnalysisResult RadarCalculator::performCombinedAnalysis
 {
     CombinedAnalysisResult res;
     TimeAnalysisResult timeRes = performTimeAnalysis(rpm, azimuthPoints, tau, beamwidth, signalType);
-    double R_time = timeRes.feasible ? timeRes.maxRange : 0.0;
     double tau_sec = tau * 1e-6;
     double T_sec = period * 1e-6;
-    R_time = (T_sec > tau_sec) ? (C * (T_sec - tau_sec) / 2.0) : 0.0;
+    double R_time = (T_sec > tau_sec) ? (C * (T_sec - tau_sec) / 2.0) : 0.0;
     res.timeRange = R_time;
 
     PowerAnalysisResult powRes = performPowerAnalysis(tau, period, Pt, G, lambda, gainRx_dB, signalType);
