@@ -11,6 +11,7 @@ TargetDialog::TargetDialog(DatabaseManager *db, QWidget *parent)
 {
     setWindowTitle("База целей");
     setupUI();
+    resize(440, 400);
     refreshTable();
     connect(m_typeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
